@@ -12,3 +12,6 @@ APP_VERSION = "1.0.0"
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", "artifacts"))
 MODEL_PATH = ARTIFACTS_DIR / "express_delivery_model.joblib"
 MODEL_CARD_PATH = ARTIFACTS_DIR / "model_card.json"
+
+# Connexion PostgreSQL (ADR-0001) : absente en dev et en test → stockage en mémoire
+DATABASE_URL = os.getenv("DATABASE_URL")

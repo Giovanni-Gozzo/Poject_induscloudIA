@@ -7,19 +7,19 @@ from fastapi import BackgroundTasks, FastAPI, Response
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.config import APP_VERSION, MODEL_CARD_PATH, MODEL_PATH, SERVICE_NAME
+from app.config import APP_VERSION, DATABASE_URL, MODEL_CARD_PATH, MODEL_PATH, SERVICE_NAME
 from app.errors import (ApiError, api_error_handler, http_error_handler,
                         unhandled_error_handler, validation_error_handler)
 from app.model import ModelService
 from app.schemas import (Error, HealthStatus, OrderAccepted, OrderFeatures,
                          Prediction, ReadinessStatus)
-from app.store import InMemoryOrderStore, OrderStore
+from app.store import OrderStore, build_store
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(SERVICE_NAME)
 
 model_service = ModelService(MODEL_PATH, MODEL_CARD_PATH)
-store: OrderStore = InMemoryOrderStore()  # la seule ligne à changer pour passer à une base de données
+store: OrderStore = build_store(DATABASE_URL)  # PostgreSQL si DATABASE_URL est défini (ADR-0001)
 
 
 @asynccontextmanager
@@ -30,7 +30,13 @@ async def lifespan(app: FastAPI):
     except Exception:
         # On démarre quand même : /health répondra 200, /health/ready répondra 503
         logger.exception("Le modèle n'a pas pu être chargé")
+    try:
+        store.setup()
+    except Exception:
+        # Même principe : /health/ready répondra 503 tant que la base est injoignable
+        logger.exception("Le stockage des commandes n'a pas pu être préparé")
     yield
+    store.close()
 
 
 app = FastAPI(

@@ -1,0 +1,533 @@
+openapi: 3.1.0
+
+info:
+  title: eligibilite-livraison-express API
+  version: 1.0.0
+  description: |
+    API de prédiction d'éligibilité à la livraison express.
+
+    Ce fichier est le **contrat** de l'application : il est fourni, et votre implémentation
+    doit le respecter. FastAPI génère automatiquement `/docs` et `/openapi.json` à partir du
+    code : à la fin de chaque séance, comparez les deux, ils doivent décrire la même API.
+
+    Chaque opération porte une extension `x-session` qui indique à quelle séance elle est
+    livrée. Une opération de séance N n'est pas attendue avant le jour N.
+  license:
+    name: Usage pédagogique
+servers:
+  - url: http://localhost:8000
+    description: Développement local
+
+tags:
+  - name: health
+    description: Sonde de vivacité et de disponibilité
+  - name: orders
+    description: Collecte des commandes (séance 1)
+  - name: predictions
+    description: Prédictions unitaire, batch et historique (séances 1 et 5)
+  - name: model
+    description: Métadonnées du modèle en service (séance 3)
+  - name: metrics
+    description: Métriques d'observabilité (séance 7)
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Sonde de vivacité
+      description: Répond 200 si le processus est vivant. Ne doit jamais dépendre d'une brique externe.
+      x-session: 1
+      responses:
+        "200":
+          description: Le service est vivant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: getReadiness
+      summary: Sonde de disponibilité
+      description: |
+        Répond 200 uniquement si le service est capable de répondre à une prédiction
+        (modèle chargé, dépendances joignables). C'est cette sonde qu'un orchestrateur
+        utilise pour router le trafic.
+      x-session: 1
+      responses:
+        "200":
+          description: Le service est prêt à recevoir du trafic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessStatus"
+        "503":
+          description: Le service n'est pas prêt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessStatus"
+
+  /v1/orders:
+    post:
+      tags: [orders]
+      operationId: createOrder
+      summary: Enregistrer une commande à prédire
+      description: |
+        Collecte de données : la commande est persistée via votre `OrderStore` et mise en file
+        d'attente pour prédiction. La réponse est immédiate, la prédiction est asynchrone.
+      x-session: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderFeatures"
+      responses:
+        "202":
+          description: Commande acceptée
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderAccepted"
+        "422":
+          description: Commande invalide
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Erreur interne
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/orders/{order_id}:
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: Relire une commande collectée
+      x-session: 1
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: CMD-000001
+      responses:
+        "200":
+          description: Commande trouvée
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderFeatures"
+        "404":
+          description: Commande inconnue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/predictions:
+    post:
+      tags: [predictions]
+      operationId: createPrediction
+      summary: Prédire l'éligibilité express d'une commande
+      description: Prédiction synchrone. C'est l'implémentation HTTP de la cellule 34 du notebook.
+      x-session: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderFeatures"
+      responses:
+        "200":
+          description: Prédiction calculée
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prediction"
+        "422":
+          description: Commande invalide
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Modèle indisponible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/predictions/batch:
+    post:
+      tags: [predictions]
+      operationId: createBatchPredictions
+      summary: Prédire un lot de commandes
+      description: Implémentation HTTP de la cellule 46 du notebook (prédiction batch).
+      x-session: 5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchPredictionRequest"
+      responses:
+        "200":
+          description: Prédictions du lot, dans l'ordre des requêtes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchPredictionResponse"
+        "422":
+          description: Lot invalide
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/predictions/{order_id}:
+    get:
+      tags: [predictions]
+      operationId: getPrediction
+      summary: Relire une prédiction déjà calculée
+      description: L'historique des prédictions est ce qui rend la production observable (séance 7).
+      x-session: 5
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: CMD-000001
+      responses:
+        "200":
+          description: Prédiction trouvée
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prediction"
+        "404":
+          description: Prédiction inconnue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/model:
+    get:
+      tags: [model]
+      operationId: getModelCard
+      summary: Métadonnées et métriques du modèle en service
+      description: Implémentation HTTP de la cellule 55 du notebook (model card).
+      x-session: 3
+      responses:
+        "200":
+          description: Model card du modèle en service
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCard"
+
+  /metrics:
+    get:
+      tags: [metrics]
+      operationId: getMetrics
+      summary: Métriques exposées au format Prometheus
+      description: Endpoint de scrape, format texte, ce n'est pas du JSON.
+      x-session: 7
+      responses:
+        "200":
+          description: Métriques au format d'exposition Prometheus
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  schemas:
+    OrderFeatures:
+      type: object
+      description: |
+        Caractéristiques d'une commande. Les noms de champs correspondent exactement aux
+        `FEATURE_COLUMNS` de la cellule 20 du notebook. Toute variable absente ou en trop
+        doit produire une erreur 422.
+      additionalProperties: false
+      required:
+        - hour
+        - day_of_week
+        - weekend
+        - distance_km
+        - order_value_eur
+        - weight_kg
+        - stock_available
+        - preparation_time_min
+        - carrier_capacity
+        - weather
+        - delivery_zone
+        - customer_type
+      properties:
+        order_id:
+          type: string
+          description: Identifiant métier de la commande. Généré par le serveur si absent.
+          example: CMD-000001
+        hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          example: 14
+        day_of_week:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: 0 = lundi ... 6 = dimanche
+          example: 2
+        weekend:
+          type: integer
+          enum: [0, 1]
+          example: 0
+        distance_km:
+          type: number
+          format: double
+          minimum: 0
+          example: 3.5
+        order_value_eur:
+          type: number
+          format: double
+          minimum: 0
+          example: 89.9
+        weight_kg:
+          type: number
+          format: double
+          minimum: 0
+          example: 2.4
+        stock_available:
+          type: integer
+          enum: [0, 1]
+          example: 1
+        preparation_time_min:
+          type: number
+          format: double
+          minimum: 0
+          example: 18
+        carrier_capacity:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          example: 0.85
+        weather:
+          $ref: "#/components/schemas/Weather"
+        delivery_zone:
+          $ref: "#/components/schemas/DeliveryZone"
+        customer_type:
+          $ref: "#/components/schemas/CustomerType"
+
+    Weather:
+      type: string
+      enum: [normal, pluie, neige, orage]
+      example: normal
+
+    DeliveryZone:
+      type: string
+      enum: [centre, proche_banlieue, banlieue, rurale]
+      example: centre
+
+    CustomerType:
+      type: string
+      enum: [standard, premium]
+      example: premium
+
+    OrderAccepted:
+      type: object
+      required: [order_id, status]
+      properties:
+        order_id:
+          type: string
+          example: CMD-000001
+        status:
+          type: string
+          enum: [accepted]
+          example: accepted
+
+    Prediction:
+      type: object
+      description: Résultat d'une prédiction, aligné sur la cellule 34 du notebook.
+      required: [order_id, express_eligible, decision, probability, model_version, predicted_at]
+      properties:
+        order_id:
+          type: string
+          example: CMD-000001
+        express_eligible:
+          type: boolean
+          example: true
+        decision:
+          type: string
+          enum: ["oui", "non"]
+          example: "oui"
+        probability:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          example: 0.8734
+        model_version:
+          type: string
+          example: 1.0.0
+        predicted_at:
+          type: string
+          format: date-time
+        latency_ms:
+          type: number
+          format: double
+          description: Temps de calcul de la prédiction, pour l'observabilité (séance 7)
+
+    BatchPredictionRequest:
+      type: object
+      required: [orders]
+      properties:
+        orders:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/OrderFeatures"
+
+    BatchPredictionResponse:
+      type: object
+      required: [predictions, count]
+      properties:
+        predictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Prediction"
+        count:
+          type: integer
+          example: 3
+
+    ModelCard:
+      type: object
+      description: Model card de la cellule 55 du notebook.
+      required: [project, model_version, model_type, task, target, threshold, features, metrics]
+      properties:
+        project:
+          type: string
+          example: eligibilite-livraison-express
+        model_version:
+          type: string
+          example: 1.0.0
+        model_type:
+          type: string
+          example: Logistic regression
+        task:
+          type: string
+          example: binary classification
+        target:
+          type: string
+          example: express_eligible
+        threshold:
+          type: number
+          format: double
+          example: 0.5
+        trained_at:
+          type: string
+          format: date-time
+        features:
+          type: array
+          items:
+            type: string
+        metrics:
+          type: object
+          additionalProperties:
+            type: number
+          example:
+            accuracy: 0.86
+            precision: 0.88
+            recall: 0.84
+            f1_score: 0.86
+            roc_auc: 0.93
+        limitations:
+          type: array
+          items:
+            type: string
+
+    OrderEvent:
+      type: object
+      description: |
+        Contrat d'événement du flux temps réel (séance 6). Le producteur publie ce message,
+        le consommateur le traite. Le format de transport (JSON, Avro, Protobuf) est votre choix,
+        le contenu ne l'est pas.
+      required: [event_id, event_type, occurred_at, order]
+      properties:
+        event_id:
+          type: string
+          example: 5f2c9b1e-7f1e-4b0a-9a3c-1b7c9d2e4a55
+        event_type:
+          type: string
+          enum: [order.created]
+          example: order.created
+        occurred_at:
+          type: string
+          format: date-time
+        order:
+          $ref: "#/components/schemas/OrderFeatures"
+        schema_version:
+          type: integer
+          description: Version du schéma, pour pouvoir faire évoluer le contrat
+          example: 1
+
+    HealthStatus:
+      type: object
+      required: [status, service, version]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          example: ok
+        service:
+          type: string
+          example: eligibilite-livraison-express
+        version:
+          type: string
+          example: 1.0.0
+
+    ReadinessStatus:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+          example: ready
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            model: loaded
+            order_store: reachable
+        version:
+          type: string
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Code d'erreur stable, branchable côté client
+          example: validation_error
+        message:
+          type: string
+          description: Message destiné à l'humain, non contractuel
+          example: "Feature manquante : distance_km"
+        details:
+          type: array
+          items:
+            type: string

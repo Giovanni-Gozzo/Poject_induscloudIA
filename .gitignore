@@ -1,0 +1,33 @@
+# --- Sorties générées par le notebook ---
+artifacts/
+mlruns/
+mlartifacts/
+mlflow.db
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Environnements virtuels ---
+.venv/
+venv/
+env/
+.env
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Éditeurs / IDE ---
+.vscode/
+.idea/
+
+# --- Système ---
+.DS_Store
+Thumbs.db
+desktop.ini

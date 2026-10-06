@@ -1,0 +1,8 @@
+-r requirements.txt
+mlflow
+matplotlib
+seaborn
+ipykernel
+pytest
+httpx
+pyyaml

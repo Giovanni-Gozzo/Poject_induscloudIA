@@ -1,0 +1,25 @@
+# Seuls requirements*.txt, app/ et training/ sont utiles au build
+.git
+.gitignore
+.devcontainer/
+.vscode/
+.idea/
+.venv/
+venv/
+env/
+.env
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Sorties locales : le modèle est réentraîné pendant le build
+artifacts/
+mlruns/
+mlartifacts/
+mlflow.db
+
+*.ipynb
+*.pdf
+.DS_Store

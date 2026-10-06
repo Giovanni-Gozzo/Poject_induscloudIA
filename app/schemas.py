@@ -68,3 +68,10 @@ class ReadinessStatus(BaseModel):
     status: Literal["ready", "not_ready"]
     checks: dict[str, str]
     version: str | None = None
+
+# --- Format unique de toutes les erreurs ---
+class Error(BaseModel):
+    error: str = Field(description="Code d'erreur stable, branchable côté client",
+                       examples=["validation_error"])
+    message: str = Field(description="Message destiné à l'humain, non contractuel")
+    details: list[str] | None = None

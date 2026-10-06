@@ -3,11 +3,16 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, Response
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import APP_VERSION, MODEL_CARD_PATH, MODEL_PATH, SERVICE_NAME
+from app.errors import (ApiError, api_error_handler, http_error_handler,
+                        unhandled_error_handler, validation_error_handler)
 from app.model import ModelService
-from app.schemas import HealthStatus, OrderFeatures, Prediction, ReadinessStatus
+from app.schemas import (Error, HealthStatus, OrderFeatures, Prediction,  # ← MODIFIÉ (Error)
+                         ReadinessStatus)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(SERVICE_NAME)
@@ -33,6 +38,12 @@ app = FastAPI(
     description="API de prédiction d'éligibilité à la livraison express.",
     lifespan=lifespan,
 )
+
+# Gestionnaires d'erreurs : toutes les erreurs sortent au format Error du contrat
+app.add_exception_handler(ApiError, api_error_handler)                     # ← NOUVEAU
+app.add_exception_handler(RequestValidationError, validation_error_handler)  # ← NOUVEAU
+app.add_exception_handler(StarletteHTTPException, http_error_handler)       # ← NOUVEAU
+app.add_exception_handler(Exception, unhandled_error_handler)              # ← NOUVEAU
 
 
 def new_order_id() -> str:
@@ -62,10 +73,12 @@ def get_readiness(response: Response) -> ReadinessStatus:
 # ---------------------------- predictions ----------------------------
 @app.post("/v1/predictions", tags=["predictions"], operation_id="createPrediction",
           summary="Prédire l'éligibilité express d'une commande",
-          response_model=Prediction)
+          response_model=Prediction,
+          responses={422: {"model": Error, "description": "Commande invalide"},     # ← NOUVEAU
+                     503: {"model": Error, "description": "Modèle indisponible"}})  # ← NOUVEAU
 def create_prediction(order: OrderFeatures) -> Prediction:
     if not model_service.is_loaded:
-        raise HTTPException(status_code=503, detail="Modèle indisponible")
+        raise ApiError(503, "model_unavailable", "Le modèle n'est pas chargé")  # ← MODIFIÉ
     if order.order_id is None:
         order = order.model_copy(update={"order_id": new_order_id()})
     return model_service.predict(order)

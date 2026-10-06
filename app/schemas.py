@@ -75,3 +75,8 @@ class Error(BaseModel):
                        examples=["validation_error"])
     message: str = Field(description="Message destiné à l'humain, non contractuel")
     details: list[str] | None = None
+
+# --- Réponse de POST /v1/orders (l'accusé de réception) ---
+class OrderAccepted(BaseModel):
+    order_id: str
+    status: Literal["accepted"] = "accepted"

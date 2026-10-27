@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 SERVICE_NAME = "eligibilite-livraison-express"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", "artifacts"))
 MODEL_PATH = ARTIFACTS_DIR / "express_delivery_model.joblib"

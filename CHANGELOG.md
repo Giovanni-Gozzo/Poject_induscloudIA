@@ -7,6 +7,8 @@ et le projet respecte le [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-27
+
 ### Added
 - Authentification par clé d'API (`X-API-Key`) : une clé par client, avec rôle (`user`, `admin`)
   et date d'expiration ; seules les empreintes SHA-256 sont stockées (ADR-0007).
@@ -37,5 +39,5 @@ et le projet respecte le [Semantic Versioning](https://semver.org/lang/fr/).
 - Modèle intégré à l'image Docker (ADR-0002), Dockerfile pour Coolify.
 - Tests automatiques de l'API et de conformité au contrat OpenAPI.
 
-[Unreleased]: https://github.com/Giovanni-Gozzo/Poject_induscloudIA/compare/v1.0.0...develop
-[1.0.0]: https://github.com/Giovanni-Gozzo/Poject_induscloudIA/releases/tag/v1.0.0
+[Unreleased]: https://github.com/Giovanni-Gozzo/Poject_induscloudIA/compare/v1.1.0...develop
+[1.1.0]: https://github.com/Giovanni-Gozzo/Poject_induscloudIA/releases/tag/v1.1.0

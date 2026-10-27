@@ -21,8 +21,16 @@ COMMANDE = {
 
 
 @pytest.fixture(scope="module")
-def client():
-    """Un client de test, avec le modèle chargé (le `with` déclenche le lifespan)."""
+def client(admin_headers):
+    """Un client de test authentifié (clé admin), avec le modèle chargé
+    (le `with` déclenche le lifespan)."""
+    with TestClient(app, headers=admin_headers) as c:
+        yield c
+
+
+@pytest.fixture(scope="module")
+def anonymous_client():
+    """Un client de test SANS clé d'API."""
     with TestClient(app) as c:
         yield c
 
@@ -124,8 +132,69 @@ def test_route_inexistante_404(client):
     assert r.json()["error"] == "not_found"
 
 
+# ============================== sécurité ==============================
+def test_health_reste_public(anonymous_client):
+    assert anonymous_client.get("/health").status_code == 200
+    assert anonymous_client.get("/health/ready").status_code == 200
+
+
+@pytest.mark.parametrize("methode, chemin", [
+    ("post", "/v1/predictions"),
+    ("post", "/v1/orders"),
+    ("get", "/v1/orders/CMD-PYTEST-1"),
+])
+def test_route_protegee_sans_cle_renvoie_401(anonymous_client, methode, chemin):
+    r = anonymous_client.request(methode, chemin, json=COMMANDE)
+    assert r.status_code == 401
+    assert r.json()["error"] == "unauthorized"
+
+
+def test_cle_inconnue_renvoie_401(anonymous_client):
+    r = anonymous_client.post("/v1/predictions", json=COMMANDE,
+                              headers={"X-API-Key": "sk_cle_inventee"})
+    assert r.status_code == 401
+    assert r.json()["message"] == "Clé d'API invalide"
+
+
+def test_cle_expiree_renvoie_401(anonymous_client, expired_headers):
+    r = anonymous_client.post("/v1/predictions", json=COMMANDE, headers=expired_headers)
+    assert r.status_code == 401
+    assert r.json()["message"] == "Clé d'API expirée"
+
+
+def test_sans_cle_une_commande_invalide_renvoie_401_pas_422(anonymous_client):
+    # On ne révèle rien du format attendu à un client non authentifié
+    r = anonymous_client.post("/v1/predictions", json={"pirate": True})
+    assert r.status_code == 401
+
+
+def test_role_user_peut_predire(anonymous_client, user_headers):
+    r = anonymous_client.post("/v1/predictions", json=COMMANDE, headers=user_headers)
+    assert r.status_code == 200
+
+
+def test_role_user_ne_peut_pas_relire_une_commande(anonymous_client, user_headers):
+    anonymous_client.post("/v1/orders", json={**COMMANDE, "order_id": "CMD-PYTEST-3"},
+                          headers=user_headers)
+    r = anonymous_client.get("/v1/orders/CMD-PYTEST-3", headers=user_headers)
+    assert r.status_code == 403
+    assert r.json()["error"] == "forbidden"
+
+
+def test_entetes_de_securite_presents(client):
+    r = client.post("/v1/predictions", json=COMMANDE)
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert r.headers["X-Frame-Options"] == "DENY"
+    assert r.headers["Cache-Control"] == "no-store"
+
+
+def test_documentation_desactivee_par_defaut(anonymous_client):
+    assert anonymous_client.get("/docs").status_code == 404
+    assert anonymous_client.get("/openapi.json").status_code == 404
+
+
 # ============================ contrat OpenAPI ============================
-SEANCE_COURANTE = 1
+SEANCE_COURANTE = 2
 
 
 def test_conformite_au_contrat():

@@ -1,0 +1,65 @@
+# Intégration continue : à chaque push et chaque Pull Request
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "feature/**", "release/**", "hotfix/**"]
+  pull_request:
+    branches: [main, develop]
+  workflow_call:   # réutilisé par release.yml avant de publier une image
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Qualité et tests
+    runs-on: ubuntu-latest
+    services:
+      # Vraie base PostgreSQL : les tests de tests/test_store.py ne sont plus ignorés
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test -d test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"   # même version que le devcontainer et le Dockerfile
+          cache: pip
+
+      - name: Installer les dépendances (versions figées)
+        run: pip install -r requirements-dev.txt -c requirements.lock.txt
+
+      - name: Entraîner le modèle (artefacts utilisés par les tests)
+        run: python -m training.train
+
+      - name: Pylint
+        run: pylint app training scripts
+
+      - name: Pytest (couverture minimale 80 %)
+        env:
+          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test
+        run: python -m pytest --cov=app --cov=training --cov-report=term-missing --cov-fail-under=80
+
+  docker:
+    name: Construction de l'image Docker
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (sans publication)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -10,6 +10,7 @@ from pathlib import Path
 import joblib
 import mlflow
 import mlflow.sklearn
+import pandas as pd
 import sklearn
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -30,7 +31,10 @@ PROJECT_NAME = "eligibilite-livraison-express"
 MODEL_VERSION = "1.0.0"
 RANDOM_STATE = 42
 THRESHOLD = 0.5
+TEST_SIZE = 0.20
 ARTIFACTS_DIR = Path("artifacts")
+MODEL_FILENAME = "express_delivery_model.joblib"
+MODEL_CARD_FILENAME = "model_card.json"
 
 TARGET = "express_eligible"
 NUMERIC_FEATURES = [
@@ -40,9 +44,16 @@ NUMERIC_FEATURES = [
 CATEGORICAL_FEATURES = ["weather", "delivery_zone", "customer_type"]
 FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
+LIMITATIONS = [
+    "Le jeu de données utilisé est synthétique.",
+    "La décision ne doit pas être utilisée sans validation des règles métier.",
+    "Les performances peuvent varier sur des données réelles.",
+    "Le modèle ne remplace pas une analyse des contraintes opérationnelles.",
+]
+
 
 def build_pipeline() -> Pipeline:
-    """Construit la pipeline scikit-learn (cellule 13 du notebook)."""
+    """Construit la pipeline scikit-learn (cellule 24 du notebook)."""
     numeric = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("scaler", StandardScaler()),
@@ -61,33 +72,34 @@ def build_pipeline() -> Pipeline:
     return Pipeline([("preprocessor", preprocessor), ("classifier", classifier)])
 
 
-def main() -> None:
-    ARTIFACTS_DIR.mkdir(exist_ok=True)
-
-    # 1. Données
-    orders = clean_orders_data(generate_orders_dataset(random_state=RANDOM_STATE))
+def load_training_data(n_rows: int = 6000):
+    """Données propres et validées, découpées en entraînement / test (cellules 8 à 22)."""
+    orders = clean_orders_data(generate_orders_dataset(n_rows=n_rows, random_state=RANDOM_STATE))
     validate_dataset(orders)
     X, y = orders[FEATURE_COLUMNS], orders[TARGET]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.20, random_state=RANDOM_STATE, stratify=y
-    )
-    print(f"Entraînement : {len(X_train)} lignes | Test : {len(X_test)} lignes")
+    return train_test_split(X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y)
 
-    # 2. Entraînement + suivi MLflow
+
+def evaluate(pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> dict[str, float]:
+    """Métriques du modèle sur le jeu de test, au seuil THRESHOLD (cellule 26)."""
+    proba = pipeline.predict_proba(X_test)[:, 1]
+    pred = (proba >= THRESHOLD).astype(int)
+    return {
+        "accuracy": accuracy_score(y_test, pred),
+        "precision": precision_score(y_test, pred, zero_division=0),
+        "recall": recall_score(y_test, pred, zero_division=0),
+        "f1_score": f1_score(y_test, pred, zero_division=0),
+        "roc_auc": roc_auc_score(y_test, proba),
+    }
+
+
+def train_and_track(X_train, X_test, y_train, y_test) -> tuple[Pipeline, dict[str, float], str]:
+    """Entraîne, évalue et enregistre le run dans MLflow. Renvoie (pipeline, métriques, run_id)."""
     pipeline = build_pipeline()
     mlflow.set_experiment("livraison-express")
     with mlflow.start_run(run_name="logistic-regression-baseline") as run:
         pipeline.fit(X_train, y_train)
-
-        proba = pipeline.predict_proba(X_test)[:, 1]
-        pred = (proba >= THRESHOLD).astype(int)
-        metrics = {
-            "accuracy": accuracy_score(y_test, pred),
-            "precision": precision_score(y_test, pred, zero_division=0),
-            "recall": recall_score(y_test, pred, zero_division=0),
-            "f1_score": f1_score(y_test, pred, zero_division=0),
-            "roc_auc": roc_auc_score(y_test, proba),
-        }
+        metrics = evaluate(pipeline, X_test, y_test)
 
         mlflow.log_params({
             "model_type": "LogisticRegression",
@@ -102,12 +114,12 @@ def main() -> None:
             skops_trusted_types=["numpy.dtype"],  # corrige l'erreur de la cellule 14
             input_example=X_train.head(3),        # MLflow en déduit le format d'entrée
         )
-        run_id = run.info.run_id
+        return pipeline, metrics, run.info.run_id
 
-    # 3. Sauvegarde des artefacts consommés par l'API
-    joblib.dump(pipeline, ARTIFACTS_DIR / "express_delivery_model.joblib")
 
-    model_card = {
+def build_model_card(metrics: dict[str, float], run_id: str | None) -> dict:
+    """Model card lue par l'API au démarrage (cellule 55)."""
+    return {
         "project": PROJECT_NAME,
         "model_version": MODEL_VERSION,
         "model_type": "Logistic regression",
@@ -117,18 +129,28 @@ def main() -> None:
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "features": FEATURE_COLUMNS,
         "metrics": {name: round(float(value), 4) for name, value in metrics.items()},
-        "limitations": [
-            "Le jeu de données utilisé est synthétique.",
-            "La décision ne doit pas être utilisée sans validation des règles métier.",
-            "Les performances peuvent varier sur des données réelles.",
-            "Le modèle ne remplace pas une analyse des contraintes opérationnelles.",
-        ],
+        "limitations": LIMITATIONS,
         "sklearn_version": sklearn.__version__,
         "mlflow_run_id": run_id,
     }
-    (ARTIFACTS_DIR / "model_card.json").write_text(
+
+
+def save_artifacts(pipeline: Pipeline, model_card: dict, artifacts_dir: Path) -> None:
+    """Écrit les deux artefacts consommés par l'API (ADR-0002)."""
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    joblib.dump(pipeline, artifacts_dir / MODEL_FILENAME)
+    (artifacts_dir / MODEL_CARD_FILENAME).write_text(
         json.dumps(model_card, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+
+
+def main() -> None:
+    X_train, X_test, y_train, y_test = load_training_data()
+    print(f"Entraînement : {len(X_train)} lignes | Test : {len(X_test)} lignes")
+
+    pipeline, metrics, run_id = train_and_track(X_train, X_test, y_train, y_test)
+    model_card = build_model_card(metrics, run_id)
+    save_artifacts(pipeline, model_card, ARTIFACTS_DIR)
 
     print("Métriques :")
     for name, value in model_card["metrics"].items():

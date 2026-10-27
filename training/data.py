@@ -12,7 +12,7 @@ def generate_orders_dataset(n_rows=6000, random_state=42):
 
     order_date = pd.date_range(start="2025-01-01", end="2025-12-31", periods=n_rows)
     hour = rng.integers(7, 23, size=n_rows)
-    day_of_week = pd.Series(order_date).dt.dayofweek.to_numpy()
+    day_of_week = pd.Series(order_date).dt.day_of_week.to_numpy()
     weekend = (day_of_week >= 5).astype(int)
 
     data = pd.DataFrame({

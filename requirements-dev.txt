@@ -6,3 +6,5 @@ ipykernel
 pytest
 httpx
 pyyaml
+pytest-cov
+pylint

@@ -1,14 +1,12 @@
 """Chargement du modèle et calcul des prédictions."""
-import json
 import logging
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
-import joblib
 import pandas as pd
 import sklearn
 
+from app.model_repository import ModelRepository
 from app.schemas import OrderFeatures, Prediction
 
 logger = logging.getLogger(__name__)
@@ -17,9 +15,8 @@ logger = logging.getLogger(__name__)
 class ModelService:
     """Garde le modèle en mémoire et l'utilise pour prédire."""
 
-    def __init__(self, model_path: Path, card_path: Path) -> None:
-        self.model_path = model_path
-        self.card_path = card_path
+    def __init__(self, repository: ModelRepository) -> None:
+        self.repository = repository  # d'où vient le modèle : fichiers, MLflow... (ADR-0002)
         self.model = None   # rien n'est chargé tant que load() n'a pas été appelé
         self.card = {}
 
@@ -28,7 +25,7 @@ class ModelService:
         return self.model is not None
 
     def load(self) -> None:
-        card = json.loads(self.card_path.read_text(encoding="utf-8"))
+        card = self.repository.load_card()
 
         # Garde-fou n°1 : les features du modèle doivent être celles du contrat
         contrat = set(OrderFeatures.model_fields) - {"order_id"}
@@ -43,7 +40,8 @@ class ModelService:
                 card.get("sklearn_version"), sklearn.__version__,
             )
 
-        self.model = joblib.load(self.model_path)
+        # La pipeline n'est chargée qu'APRÈS les garde-fous
+        self.model = self.repository.load_pipeline()
         self.card = card
         logger.info("Modèle %s chargé", card["model_version"])
 

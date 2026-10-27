@@ -21,6 +21,8 @@ tests/                  tests automatiques (pytest)
 docs/adr/               décisions d'architecture
 openapi.yml             contrat de l'API (fourni)
 Dockerfile              image de production : entraînement + API
+docker-compose.yml      API + PostgreSQL en local
+.github/                workflows CI/CD, modèles d'Issues et de PR
 ```
 
 ## Démarrage (dans le devcontainer)
@@ -45,6 +47,26 @@ curl -X POST http://localhost:8000/v1/predictions \
        "weight_kg":2.4,"stock_available":1,"preparation_time_min":18,"carrier_capacity":0.85,
        "weather":"normal","delivery_zone":"centre","customer_type":"premium"}'
 ```
+
+## Docker
+
+```bash
+cp .env.example .env          # renseigner POSTGRES_PASSWORD et API_KEYS (.env n'est jamais commité)
+docker compose up --build     # API sur http://127.0.0.1:8000 + PostgreSQL (non exposé)
+```
+
+L'image (`Dockerfile`) est construite en 3 étapes : dépendances → entraînement → image finale,
+sans pip, sans MLflow, avec un utilisateur non root. Le conteneur tourne en lecture seule et sans privilèges Linux.
+
+## CI/CD (GitHub Actions)
+
+| Workflow | Déclencheur | Ce qu'il fait |
+|---|---|---|
+| `ci.yml` | push sur `main`, `develop`, `feature/**`, `release/**`, `hotfix/**`, et Pull Requests | pylint (≥ 9/10), pytest avec PostgreSQL (couverture ≥ 80 %), construction de l'image |
+| `release.yml` | tag `vX.Y.Z` | CI, puis image publiée sur `ghcr.io/giovanni-gozzo/poject_induscloudia`, puis Release GitHub |
+
+Publier une version (GitFlow) : `release/X.Y.Z` depuis `develop` → mise à jour de `APP_VERSION`
+et du `CHANGELOG` → merge dans `main` et `develop` → `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 ## Variables d'environnement
 
@@ -91,7 +113,7 @@ En production, ces variables sont saisies dans Coolify. **Aucun secret dans git.
 | Déploiement | 2 | Coolify sur Hetzner, rolling update (ADR-0003 à 0005) |
 | Sécurisation de la chaîne de déploiement | 2 | Défense en profondeur et clés d'API (ADR-0006, ADR-0007) |
 | Sauvegarde du modèle | 3 | Artefacts dans l'image Docker (ADR-0002) |
-| CI/CD | 3 | à venir |
+| CI/CD | 3 | GitHub Actions : `ci.yml` (qualité, tests, build) et `release.yml` (image sur GHCR) |
 | Nettoyage / validation des données | 4 | `training/data.py` (déjà extrait), à brancher sur les données réelles |
 | MLflow | 4 | suivi des runs dans `training/train.py`, Model Registry à venir |
 | Pipeline batch / flux temps réel | 5 | à venir (`/v1/predictions/batch` prévu par le contrat) |

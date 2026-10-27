@@ -44,16 +44,16 @@ SECURITY_HEADERS = {
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     # Ce code s'exécute UNE fois, au démarrage du serveur
     try:
         model_service.load()
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # On démarre quand même : /health répondra 200, /health/ready répondra 503
         logger.exception("Le modèle n'a pas pu être chargé")
     try:
         store.setup()
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # Même principe : /health/ready répondra 503 tant que la base est injoignable
         logger.exception("Le stockage des commandes n'a pas pu être préparé")
     yield

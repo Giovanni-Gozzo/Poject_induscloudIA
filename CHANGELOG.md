@@ -16,11 +16,15 @@ et le projet respecte le [Semantic Versioning](https://semver.org/lang/fr/).
 - Abstraction `ModelRepository` / `FileModelRepository` pour le chargement du modèle.
 - ADR 0003 à 0007 : plateforme, Cloud Hetzner, stratégie de déploiement, sécurité.
 - README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, LICENSE (MIT) et modèles d'Issues / PR.
+- `docker-compose.yml` (API + PostgreSQL) et `.env.example`.
+- GitHub Actions : `ci.yml` (pylint, pytest avec PostgreSQL, build Docker) et `release.yml`
+  (image publiée sur GHCR et Release GitHub à chaque tag `vX.Y.Z`).
 
 ### Changed
 - `GET /v1/orders/{order_id}` est réservé au rôle `admin`.
 - `/docs` et `/openapi.json` sont désactivés par défaut (`DOCS_ENABLED=true` pour le développement).
 - `training/train.py` découpé en fonctions testables (métriques inchangées).
+- Image Docker en 3 étapes : environnement virtuel copié, pip supprimé, labels OCI.
 
 ## [1.0.0] - 2026-10-06
 

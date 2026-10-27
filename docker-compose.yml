@@ -1,0 +1,50 @@
+# Lance l'application de production en local : API + PostgreSQL.
+#
+#   cp .env.example .env      # puis renseigner les valeurs (.env n'est jamais commité)
+#   docker compose up --build
+#
+# En production, Coolify utilise le Dockerfile et injecte les variables lui-même (ADR-0003).
+services:
+  api:
+    build:
+      context: .
+      args:
+        VERSION: local
+    environment:
+      DATABASE_URL: postgresql://app:${POSTGRES_PASSWORD:?à définir dans .env}@db:5432/livraison
+      API_KEYS: ${API_KEYS:-[]}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      DOCS_ENABLED: ${DOCS_ENABLED:-false}
+    ports:
+      - "127.0.0.1:8000:8000"   # accessible uniquement depuis la machine locale
+    depends_on:
+      db:
+        condition: service_healthy
+    # Durcissement du conteneur (ADR-0006)
+    read_only: true             # système de fichiers en lecture seule
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL                     # aucun privilège Linux
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: livraison
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
+    # Aucun port publié : la base n'est joignable que par l'API, sur le réseau interne
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d livraison"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:

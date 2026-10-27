@@ -1,0 +1,16 @@
+# Configuration pylint (lancée par la CI : .github/workflows/ci.yml)
+[MAIN]
+fail-under=9.0
+
+[MESSAGES CONTROL]
+# invalid-name : X_train, X_test, y... sont la convention du Machine Learning (scikit-learn)
+# missing-function-docstring : les routes sont documentées par summary= dans le contrat OpenAPI
+disable=invalid-name,
+        missing-function-docstring
+
+[VARIABLES]
+# Arguments imposés par la signature FastAPI des gestionnaires (request, exc, app)
+ignored-argument-names=_.*|request|exc|app
+
+[FORMAT]
+max-line-length=110

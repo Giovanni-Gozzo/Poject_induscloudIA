@@ -15,22 +15,26 @@ class ApiError(Exception):
     """Erreur métier que l'on lève volontairement dans nos routes."""
 
     def __init__(self, status_code: int, error: str, message: str,
-                 details: list[str] | None = None) -> None:
+                 details: list[str] | None = None,
+                 headers: dict[str, str] | None = None) -> None:
         self.status_code = status_code
         self.error = error
         self.message = message
         self.details = details
+        self.headers = headers  # ex. Retry-After sur une 429
 
 
-def _reponse(status_code: int, erreur: Error) -> JSONResponse:
+def _reponse(status_code: int, erreur: Error,
+             headers: dict[str, str] | None = None) -> JSONResponse:
     # exclude_none : on n'affiche pas "details" s'il est vide
-    return JSONResponse(status_code=status_code, content=erreur.model_dump(exclude_none=True))
+    return JSONResponse(status_code=status_code, content=erreur.model_dump(exclude_none=True),
+                        headers=headers)
 
 
 async def api_error_handler(request: Request, exc: ApiError) -> JSONResponse:
-    """Nos erreurs volontaires : 404 commande inconnue, 503 modèle indisponible..."""
+    """Nos erreurs volontaires : 401, 403, 404 commande inconnue, 429, 503 modèle indisponible..."""
     return _reponse(exc.status_code, Error(error=exc.error, message=exc.message,
-                                           details=exc.details))
+                                           details=exc.details), exc.headers)
 
 
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

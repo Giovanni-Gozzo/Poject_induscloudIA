@@ -32,6 +32,10 @@ WORKDIR /build
 RUN pip install mlflow skops -c /tmp/requirements.lock.txt
 COPY training/ training/
 RUN python -m training.train
+# Orchestration et script d'alimentation : utilisés par les services « trainer » et « seed-mongo »
+# des fichiers docker-compose (jamais copiés dans l'image finale de l'API)
+COPY orchestration/ orchestration/
+COPY scripts/ scripts/
 
 
 # ------------------------------------------------------------------
@@ -66,6 +70,7 @@ RUN /opt/venv/bin/python -m pip uninstall -y pip \
 
 # Fichiers appartenant à root, en lecture seule pour appuser : le code ne peut pas être modifié
 COPY app/ app/
+COPY streaming/ streaming/
 COPY --from=train /build/artifacts/express_delivery_model.joblib \
                   /build/artifacts/model_card.json \
                   artifacts/

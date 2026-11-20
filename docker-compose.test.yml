@@ -1,0 +1,123 @@
+# Environnement de TEST : API + PostgreSQL + MongoDB analytique (TP4) + RabbitMQ et interface logisticien (TP6)
+#
+#   docker compose -f docker-compose.test.yml up --build
+#   docker compose -f docker-compose.test.yml run --rm seed-mongo        # remplit MongoDB (données de test)
+#   docker compose -f docker-compose.test.yml run --rm trainer           # réentraînement depuis MongoDB
+#
+# Valeurs de test uniquement (aucun secret) : ne jamais réutiliser en production.
+x-rabbitmq-url: &rabbitmq-url amqp://livraison:livraison@rabbitmq:5672/
+
+services:
+  api:
+    build:
+      context: .
+      args:
+        VERSION: test
+    environment:
+      DATABASE_URL: postgresql://test:test@db:5432/livraison_test
+      API_KEYS: ${API_KEYS:-[]}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      DOCS_ENABLED: "true"
+      RABBITMQ_URL: *rabbitmq-url
+      RABBITMQ_QUEUE: delivery_orders
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # Interface graphique du logisticien (TP6) : http://127.0.0.1:8080
+  logistician-ui:
+    build:
+      context: .
+      args:
+        VERSION: test
+    command: ["uvicorn", "streaming.logistician_ui:app", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      RABBITMQ_URL: *rabbitmq-url
+      RABBITMQ_QUEUE: delivery_orders
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/orders', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # Réentraînement à la demande (TP4) : image de l'étape « train » (contient MLflow et training/)
+  trainer:
+    build:
+      context: .
+      target: train
+    profiles: ["tools"]
+    command: ["python", "-m", "orchestration.retrain_pipeline", "--artifacts-dir", "/build/artifacts"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: livraison_express
+      MONGO_COLLECTION: orders
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  # Remplit MongoDB avec des commandes de test (à défaut de l'image fournie par l'intervenant)
+  seed-mongo:
+    build:
+      context: .
+      target: train
+    profiles: ["tools"]
+    command: ["python", "-m", "scripts.seed_mongo", "--rows", "6000"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: livraison_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d livraison_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_test_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4.4-management
+    environment:
+      # L'utilisateur « guest » de RabbitMQ ne peut se connecter QUE depuis localhost :
+      # on crée un utilisateur dédié pour que les autres conteneurs puissent se connecter
+      RABBITMQ_DEFAULT_USER: livraison
+      RABBITMQ_DEFAULT_PASS: livraison
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"   # console d'administration RabbitMQ
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongo_test_data:

@@ -1,0 +1,127 @@
+# Environnement de PRODUCTION : API durcie + PostgreSQL + MongoDB analytique (TP4) + RabbitMQ (TP6)
+#
+#   cp .env.example .env      # renseigner les secrets (.env n'est jamais commité)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml run --rm trainer    # réentraînement (ou via l'orchestrateur)
+#
+# Aucun port de base de données ni de broker n'est publié : seuls l'API et l'interface
+# logisticien sont accessibles, et uniquement depuis la machine (127.0.0.1).
+x-hardening: &hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *hardening
+    build:
+      context: .
+      args:
+        VERSION: ${APP_VERSION:-1.1.0}
+    environment:
+      DATABASE_URL: postgresql://app:${POSTGRES_PASSWORD:?à définir dans .env}@db:5432/livraison
+      API_KEYS: ${API_KEYS:?à définir dans .env}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      DOCS_ENABLED: "false"
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?à définir dans .env}:${RABBITMQ_PASSWORD:?à définir dans .env}@rabbitmq:5672/
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-delivery_orders}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  logistician-ui:
+    <<: *hardening
+    build:
+      context: .
+      args:
+        VERSION: ${APP_VERSION:-1.1.0}
+    command: ["uvicorn", "streaming.logistician_ui:app", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?à définir dans .env}:${RABBITMQ_PASSWORD:?à définir dans .env}@rabbitmq:5672/
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-delivery_orders}
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/orders', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # Réentraînement (TP4) : lancé par l'orchestrateur, jamais par la CI/CD
+  trainer:
+    build:
+      context: .
+      target: train
+    profiles: ["tools"]
+    command: ["python", "-m", "orchestration.retrain_pipeline", "--artifacts-dir", "/build/artifacts"]
+    environment:
+      MONGO_URI: mongodb://${MONGO_USER:?à définir dans .env}:${MONGO_PASSWORD:?à définir dans .env}@mongo:27017/?authSource=admin
+      MONGO_DB: ${MONGO_DB:-livraison_express}
+      MONGO_COLLECTION: ${MONGO_COLLECTION:-orders}
+    volumes:
+      - model_artifacts:/build/artifacts
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: livraison
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d livraison"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    environment:
+      # Authentification activée en production (ADR-0006, conséquence 3)
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?à définir dans .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?à définir dans .env}
+    volumes:
+      - mongo_prod_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?à définir dans .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?à définir dans .env}
+    volumes:
+      - rabbitmq_prod_data:/var/lib/rabbitmq   # les files quorum survivent aux redémarrages
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata_prod:
+  mongo_prod_data:
+  rabbitmq_prod_data:
+  model_artifacts:

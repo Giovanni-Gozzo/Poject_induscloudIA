@@ -221,8 +221,40 @@ def test_model_card_endpoint(client):
     assert "roc_auc" in card["metrics"]
 
 
+# =============================== metrics ===============================
+def _metric_value(client, name: str, label_filter: str = "") -> float:
+    """Somme la valeur d'une métrique Prometheus (lignes ``name{...} valeur``)."""
+    body = client.get("/metrics").text
+    total = 0.0
+    for line in body.splitlines():
+        if line.startswith(name + "{") and label_filter in line:
+            total += float(line.rsplit(" ", 1)[1])
+    return total
+
+
+def test_metrics_expose_le_format_prometheus(anonymous_client):
+    r = anonymous_client.get("/metrics")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")
+    body = r.text
+    assert "delivery_http_requests_total" in body
+    assert "delivery_http_request_duration_seconds" in body
+    assert "delivery_model_loaded" in body
+    assert "delivery_model_info" in body
+
+
+def test_metrics_compte_les_predictions(client):
+    before = _metric_value(client, "delivery_predictions_total")
+    r = client.post("/v1/predictions", json=COMMANDE)
+    assert r.status_code == 200
+    decision = r.json()["decision"]
+    after = _metric_value(client, "delivery_predictions_total", f'decision="{decision}"')
+    assert after >= 1
+    assert _metric_value(client, "delivery_predictions_total") == before + 1
+
+
 # ============================ contrat OpenAPI ============================
-SEANCE_COURANTE = 6
+SEANCE_COURANTE = 7
 
 
 def test_conformite_au_contrat():

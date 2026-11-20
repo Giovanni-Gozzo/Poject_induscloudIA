@@ -13,6 +13,7 @@ app/                    API FastAPI (servie en production)
 ├── model_repository.py ModelRepository (abstraction) → FileModelRepository   (ADR-0002)
 ├── store.py            OrderStore (abstraction) → InMemory / Postgres        (ADR-0001)
 ├── security.py         clés d'API, rôles, expiration, limitation de débit    (ADR-0007)
+├── metrics.py          métriques Prometheus : requêtes, latence, prédictions (ADR-0008)
 ├── errors.py           format d'erreur unique
 └── config.py           réglages par variables d'environnement
 training/               entraînement reproductible (extrait du notebook)
@@ -108,6 +109,27 @@ uvicorn streaming.logistician_ui:app --port 8080          # interface web (conso
 python -m streaming.producer_demo --count 20 --interval 1 # simule un flux de commandes
 ```
 
+## Supervision (séance 7)
+
+`GET /metrics` expose les métriques au **format Prometheus** (`text/plain`), calculées en
+mémoire du processus (`app/metrics.py`, [ADR-0008](docs/adr/0008-observabilite-monitoring.md)) :
+
+| Métrique | Type | Contenu |
+|---|---|---|
+| `delivery_http_requests_total` | compteur | requêtes par méthode, route et statut |
+| `delivery_http_request_duration_seconds` | histogramme | latence des requêtes |
+| `delivery_predictions_total` | compteur | prédictions par décision (`oui` / `non`) |
+| `delivery_model_loaded` | jauge | 1 si le modèle est prêt, 0 sinon |
+| `delivery_model_info` | jauge | version du modèle en service |
+
+```bash
+curl http://127.0.0.1:8000/metrics            # format texte Prometheus
+curl http://127.0.0.1:8000/metrics | grep delivery_predictions_total
+```
+
+Prometheus (ou l'agent de l'hébergeur) scrape cet endpoint toutes les 15 s. Les sondes
+`/health` et `/health/ready` restent utilisées par Docker et Coolify.
+
 ## CI/CD (GitHub Actions)
 
 | Workflow | Déclencheur | Ce qu'il fait |
@@ -144,6 +166,7 @@ En production, ces variables sont saisies dans Coolify. **Aucun secret dans git.
 | `POST /v1/orders` | clé `user` ou `admin` | collecte d'une commande (prédite en arrière-plan) |
 | `GET /v1/orders/{order_id}` | clé `admin` | relecture d'une commande (données clients) |
 | `GET /v1/model` | clé `user` ou `admin` | métadonnées et métriques du modèle en service |
+| `GET /metrics` | public | métriques au format Prometheus (scrape) |
 
 ## Décisions d'architecture (ADR)
 
@@ -175,4 +198,5 @@ En production, ces variables sont saisies dans Coolify. **Aucun secret dans git.
 | Environnements Test / Prod | 4 | `docker-compose.test.yml` et `docker-compose.prod.yml` (API + Postgres + MongoDB) |
 | MLflow | 4 | suivi des runs dans `training/train.py`, Model Registry à venir |
 | Pipeline batch / flux temps réel | 5 & 6 | `POST /v1/predictions/batch` + RabbitMQ (`OrderEvent`, file quorum `delivery_orders`) + interface logisticien |
-| Supervision / mise à l'échelle | 7 | à venir (`/metrics` prévu par le contrat) |
+| Supervision | 7 | `GET /metrics` (format Prometheus) + logs + sondes (ADR-0008) |
+| Mise à l'échelle | 7 | à venir (facultatif) |

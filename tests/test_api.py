@@ -193,8 +193,68 @@ def test_documentation_desactivee_par_defaut(anonymous_client):
     assert anonymous_client.get("/openapi.json").status_code == 404
 
 
+def test_prediction_batch_et_relecture(client):
+    payload = {"orders": [
+        {**COMMANDE, "order_id": "CMD-BATCH-1"},
+        {**COMMANDE, "order_id": "CMD-BATCH-2", "distance_km": 40.0, "stock_available": 0},
+    ]}
+    r = client.post("/v1/predictions/batch", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["count"] == 2
+    assert [p["order_id"] for p in body["predictions"]] == ["CMD-BATCH-1", "CMD-BATCH-2"]
+
+    relecture = client.get("/v1/predictions/CMD-BATCH-1")
+    assert relecture.status_code == 200
+    assert relecture.json()["order_id"] == "CMD-BATCH-1"
+
+    inconnue = client.get("/v1/predictions/CMD-INCONNU")
+    assert inconnue.status_code == 404
+    assert inconnue.json()["error"] == "prediction_not_found"
+
+
+def test_model_card_endpoint(client):
+    r = client.get("/v1/model")
+    assert r.status_code == 200
+    card = r.json()
+    assert card["project"] == "eligibilite-livraison-express"
+    assert "roc_auc" in card["metrics"]
+
+
+# =============================== metrics ===============================
+def _metric_value(client, name: str, label_filter: str = "") -> float:
+    """Somme la valeur d'une métrique Prometheus (lignes ``name{...} valeur``)."""
+    body = client.get("/metrics").text
+    total = 0.0
+    for line in body.splitlines():
+        if line.startswith(name + "{") and label_filter in line:
+            total += float(line.rsplit(" ", 1)[1])
+    return total
+
+
+def test_metrics_expose_le_format_prometheus(anonymous_client):
+    r = anonymous_client.get("/metrics")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")
+    body = r.text
+    assert "delivery_http_requests_total" in body
+    assert "delivery_http_request_duration_seconds" in body
+    assert "delivery_model_loaded" in body
+    assert "delivery_model_info" in body
+
+
+def test_metrics_compte_les_predictions(client):
+    before = _metric_value(client, "delivery_predictions_total")
+    r = client.post("/v1/predictions", json=COMMANDE)
+    assert r.status_code == 200
+    decision = r.json()["decision"]
+    after = _metric_value(client, "delivery_predictions_total", f'decision="{decision}"')
+    assert after >= 1
+    assert _metric_value(client, "delivery_predictions_total") == before + 1
+
+
 # ============================ contrat OpenAPI ============================
-SEANCE_COURANTE = 2
+SEANCE_COURANTE = 7
 
 
 def test_conformite_au_contrat():

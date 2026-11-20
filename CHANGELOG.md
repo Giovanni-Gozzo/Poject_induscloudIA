@@ -7,6 +7,20 @@ et le projet respecte le [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-20
+
+### Added
+- ADR-0006 : choix de MongoDB (base analytique) comme source d'entraînement plutôt que la base de production PostgreSQL.
+- `training/repository.py` : abstraction `OrderRepository` (`save`, `get`, `get_all`), `InMemoryOrderRepository` et `MongoOrderRepository`.
+- Entraînement sur les données de `OrderRepository` (nettoyage et validation systématiques), activé par `MONGO_URI`.
+- Orchestration du réentraînement, séparée de la CI/CD : `orchestration/retrain_pipeline.py`
+  (garde-fous sur le volume de données et le ROC-AUC) et DAG Airflow `orchestration/dags/`.
+- `docker-compose.test.yml` et `docker-compose.prod.yml` (API, PostgreSQL, MongoDB, RabbitMQ, interface logisticien, réentraînement).
+- Streaming RabbitMQ (TP6) : publication de chaque prédiction au format `OrderEvent` (`openapi.yml`) sur la file quorum `delivery_orders` (`app/streaming.py`),
+  consommateur et interface web du logisticien (`streaming/`), simulateur de flux (`streaming/producer_demo.py`).
+- Endpoints `GET /v1/model`, `POST /v1/predictions/batch` et `GET /v1/predictions/{order_id}` conformes au contrat `openapi.yml`.
+- Observabilité (séance 7) : `GET /metrics` au format Prometheus (requêtes, latence, prédictions, état du modèle), instrumentation de l'API et ADR-0008.
+
 ## [1.1.0] - 2026-10-27
 
 ### Added

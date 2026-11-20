@@ -44,7 +44,7 @@ La personne qui a signalé la faille est créditée, si elle le souhaite.
 
 ## Mesures en place
 
-Résumé des décisions [ADR-0006](docs/adr/0006-securiser-les-entrees-et-sorties.md) et
-[ADR-0007](docs/adr/0007-securiser-l-acces-a-la-donnee.md) : clés d'API hachées par client
+Résumé de la décision [ADR-0007](docs/adr/0007-securiser-entrees-sorties-et-acces-donnee.md) : clés d'API hachées par client
 avec rôle et expiration, limitation de débit, validation stricte des entrées, HTTPS,
-pare-feu, base non exposée, conteneur non root, aucun secret dans git ni dans l'image.
+pare-feu, bases et broker non exposés (PostgreSQL, MongoDB, RabbitMQ), conteneurs non root
+et en lecture seule, aucun secret dans git ni dans l'image.

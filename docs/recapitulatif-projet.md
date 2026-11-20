@@ -4,7 +4,7 @@
 **Objectif global :** transformer un notebook expérimental en application de production.
 **Dépôt :** https://github.com/Giovanni-Gozzo/Poject_induscloudIA
 **Production :** https://api.giovannigozzo.fr (version 1.1.0)
-**Mis à jour le :** 27/10/2026
+**Mis à jour le :** 20/11/2026
 
 ---
 
@@ -67,8 +67,7 @@ Principes appliqués : **SOLID** (abstractions `OrderStore` et `ModelRepository`
 | a. Plateforme | [0003](adr/0003-plateforme-de-deploiement.md) | **Coolify** (PaaS auto-hébergé) sur un VPS |
 | b. Cloud / on-premise / local | [0004](adr/0004-cloud-on-premise-ou-local.md) | **Cloud Hetzner** (Allemagne, UE) : Cloud Server, Cloud Firewall, Backups, Object Storage |
 | c. Stratégie | [0005](adr/0005-strategie-de-deploiement.md) | **Rolling update** conditionné à `/health/ready` + **Rollback** + **Hotfix** (Shadow retenu pour valider un futur modèle) |
-| d.i Entrées et sorties | [0006](adr/0006-securiser-les-entrees-et-sorties.md) | Défense en profondeur : pare-feu Hetzner → Traefik (HTTPS, débit, taille) → application |
-| d.ii Accès à la donnée | [0007](adr/0007-securiser-l-acces-a-la-donnee.md) | Clés hachées par client, rôles, expiration, rotation ; base jamais exposée ; secrets uniquement dans Coolify |
+| d.i & d.ii Sécurité | [0007](adr/0007-securiser-entrees-sorties-et-acces-donnee.md) | Défense en profondeur (Hetzner → Traefik → API) + clés hachées, rôles, expiration, secrets hors git |
 
 **Image Docker :** `Dockerfile` multi-étapes (entraînement pendant le build, utilisateur non root, healthcheck).
 
@@ -141,13 +140,13 @@ Principes appliqués : **SOLID** (abstractions `OrderStore` et `ModelRepository`
 | Sécurisation de la chaîne de déploiement | 2 | Défense en profondeur, clés d'API, branches protégées | ✅ |
 | Sauvegarde du modèle | 3 | Artefacts intégrés à l'image Docker (ADR-0002) | ✅ |
 | CI/CD | 3 | GitHub Actions (`ci.yml`, `release.yml`) | ✅ |
-| Nettoyage des données | 4 | `training/data.py` (extrait, testé) | 🟡 à brancher sur des données réelles |
-| Validation des données | 4 | `training/data.py` (extrait, testé) | 🟡 idem |
-| MLflow | 4 | Suivi des runs dans `training/train.py` | 🟡 Model Registry à venir |
-| Pipeline batch | 5 | `POST /v1/predictions/batch` prévu par le contrat | ⏳ |
-| Flux temps réel | 5 | `OrderEvent` prévu par le contrat | ⏳ |
-| Supervision | 6 | `/metrics` prévu par le contrat | ⏳ |
-| Mise à l'échelle | 6 | — | ⏳ |
+| Nettoyage des données | 4 | `training/data.py` + `OrderRepository` (`MongoOrderRepository`, ADR-0006) | ✅ |
+| Validation des données | 4 | `validate_dataset()` systématique avant entraînement | ✅ |
+| MLflow | 4 | Suivi des runs dans `training/train.py` et `orchestration/retrain_pipeline.py` | ✅ |
+| Pipeline batch | 5 | `POST /v1/predictions/batch` et `GET /v1/predictions/{order_id}` | ✅ |
+| Flux temps réel | 6 | `OrderEvent` via RabbitMQ (`app/streaming.py`) + interface logisticien (`streaming/`) | ✅ |
+| Supervision | 7 | `/metrics` prévu par le contrat | ⏳ |
+| Mise à l'échelle | 7 | — | ⏳ |
 
 ---
 
@@ -156,7 +155,7 @@ Principes appliqués : **SOLID** (abstractions `OrderStore` et `ModelRepository`
 **Par toi :**
 
 - [ ] Tester la prédiction en production avec la clé `user` (réponse attendue : `"decision":"oui"`, probabilité ≈ 0,93).
-- [ ] Appliquer les règles du pare-feu Hetzner et les labels Traefik décrits dans l'[ADR-0006](adr/0006-securiser-les-entrees-et-sorties.md).
+- [ ] Appliquer les règles du pare-feu Hetzner et les labels Traefik décrits dans l'[ADR-0007](adr/0007-securiser-entrees-sorties-et-acces-donnee.md).
 - [ ] Activer l'authentification à deux facteurs sur Coolify.
 - [ ] Vérifier `docker compose up` en local (Docker n'était pas installé pendant le développement).
 - [ ] Planifier un rappel avant l'expiration des clés d'API (90 jours).

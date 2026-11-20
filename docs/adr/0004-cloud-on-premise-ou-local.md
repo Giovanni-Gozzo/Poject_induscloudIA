@@ -35,7 +35,7 @@ Le Cloud supprime la gestion du matériel (option B) tout en donnant un serveur 
 | Service | Rôle dans l'architecture |
 |---|---|
 | **Cloud Server** (Ubuntu LTS, 2 vCPU / 4 Go RAM minimum) | Héberge Coolify, Traefik, le conteneur de l'API et PostgreSQL |
-| **Cloud Firewall** | Filtre les connexions entrantes avant même qu'elles atteignent le serveur (règles dans l'ADR-0006) |
+| **Cloud Firewall** | Filtre les connexions entrantes avant même qu'elles atteignent le serveur (règles dans l'ADR-0007) |
 | **Backups** du serveur | Image complète du serveur chaque jour, pour le reconstruire après un incident grave |
 | **Object Storage** (compatible S3) | Destination des sauvegardes planifiées de PostgreSQL configurées dans Coolify (ADR-0001), stockées hors du serveur |
 

@@ -105,15 +105,36 @@ Principes appliqués : **SOLID** (abstractions `OrderStore` et `ModelRepository`
 
 ---
 
+## Séance 7 — Observabilité et monitoring
+
+### Ce qui était demandé
+
+- Mesurer l'état de santé d'un système en production (observabilité, monitoring).
+- Rédiger un **ADR** sur la supervision.
+
+### Ce qui a été fait
+
+| Élément | Réalisation |
+|---|---|
+| Endpoint | `GET /metrics` au format d'exposition **Prometheus** (`text/plain`), public pour le scrape interne |
+| Code | `app/metrics.py` : compteurs et histogrammes en mémoire, sans brique externe |
+| Métriques | requêtes HTTP (méthode, route, statut), latence, prédictions (`oui`/`non`), modèle chargé, version du modèle |
+| Instrumentation | middleware de mesure de chaque requête + incrément à chaque prédiction (unitaire, lot, arrière-plan) |
+| ADR | [0008](adr/0008-observabilite-monitoring.md) : métriques Prometheus + logs + sondes, alertes suggérées |
+| Tests | format Prometheus exposé, endpoint public, incrément du compteur de prédictions |
+
+Les sondes `/health` et `/health/ready` (séance 1) restent utilisées par Docker et Coolify
+pour le rolling update. La mise à l'échelle (facultative) n'est pas traitée.
+
 ## Résultats vérifiés
 
 **Qualité (dernière CI) :**
 
 | Indicateur | Résultat |
 |---|---|
-| Tests | **71 réussis**, 0 ignoré (dont les tests PostgreSQL) |
-| Couverture | **93,7 %** (minimum demandé : 80 %) |
-| Pylint | **9,63 / 10** |
+| Tests | **85 réussis**, 6 ignorés en local (tests PostgreSQL, exécutés en CI) |
+| Couverture | **85 %** (minimum demandé : 80 %) |
+| Pylint | **9,97 / 10** |
 | Image Docker | construite et publiée (`1.1.0`, `1.1`) |
 
 **Production (`https://api.giovannigozzo.fr`, après la release 1.1.0) :**
@@ -145,8 +166,8 @@ Principes appliqués : **SOLID** (abstractions `OrderStore` et `ModelRepository`
 | MLflow | 4 | Suivi des runs dans `training/train.py` et `orchestration/retrain_pipeline.py` | ✅ |
 | Pipeline batch | 5 | `POST /v1/predictions/batch` et `GET /v1/predictions/{order_id}` | ✅ |
 | Flux temps réel | 6 | `OrderEvent` via RabbitMQ (`app/streaming.py`) + interface logisticien (`streaming/`) | ✅ |
-| Supervision | 7 | `/metrics` prévu par le contrat | ⏳ |
-| Mise à l'échelle | 7 | — | ⏳ |
+| Supervision | 7 | `GET /metrics` (Prometheus) + logs + sondes (ADR-0008) | ✅ |
+| Mise à l'échelle | 7 | Facultatif, non traité | ⏳ |
 
 ---
 

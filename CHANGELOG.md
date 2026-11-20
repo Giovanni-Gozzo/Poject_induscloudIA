@@ -17,6 +17,7 @@ et le projet respecte le [Semantic Versioning](https://semver.org/lang/fr/).
 - Streaming RabbitMQ (TP6) : publication de chaque prédiction au format `OrderEvent` (`openapi.yml`) sur la file quorum `delivery_orders` (`app/streaming.py`),
   consommateur et interface web du logisticien (`streaming/`), simulateur de flux (`streaming/producer_demo.py`).
 - Endpoints `GET /v1/model`, `POST /v1/predictions/batch` et `GET /v1/predictions/{order_id}` conformes au contrat `openapi.yml`.
+- Observabilité (séance 7) : `GET /metrics` au format Prometheus (requêtes, latence, prédictions, état du modèle), instrumentation de l'API et ADR-0008.
 
 ## [1.1.0] - 2026-10-27
 

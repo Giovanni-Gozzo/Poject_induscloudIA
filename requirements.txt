@@ -8,3 +8,4 @@ joblib
 psycopg[binary,pool]
 pymongo
 pika
+prometheus-client

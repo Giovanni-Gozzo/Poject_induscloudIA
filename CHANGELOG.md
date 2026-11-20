@@ -7,6 +7,8 @@ et le projet respecte le [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-20
+
 ### Added
 - ADR-0006 : choix de MongoDB (base analytique) comme source d'entraînement plutôt que la base de production PostgreSQL.
 - `training/repository.py` : abstraction `OrderRepository` (`save`, `get`, `get_all`), `InMemoryOrderRepository` et `MongoOrderRepository`.

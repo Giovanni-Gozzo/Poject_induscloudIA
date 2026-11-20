@@ -1,9 +1,9 @@
 """Schémas de données : traduction Python du contrat openapi.yml."""
+from datetime import datetime
 from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from datetime import datetime
 
 # --- Listes de valeurs autorisées (enum dans le contrat) ---
 class Weather(str, Enum):
@@ -38,7 +38,7 @@ class OrderFeatures(BaseModel):
     distance_km: float = Field(ge=0, strict=True, examples=[3.5])
     order_value_eur: float = Field(ge=0, strict=True, examples=[89.9])
     weight_kg: float = Field(ge=0, strict=True, examples=[2.4])
-    stock_available: int = Field(ge=0, le=1, strict=True) 
+    stock_available: int = Field(ge=0, le=1, strict=True)
     preparation_time_min: float = Field(ge=0, strict=True, examples=[18])
     carrier_capacity: float = Field(ge=0, le=1, strict=True, examples=[0.85])
     # Enum sans strict : le texte "normal" est accepté, "grêle" est refusé
@@ -80,3 +80,37 @@ class Error(BaseModel):
 class OrderAccepted(BaseModel):
     order_id: str
     status: Literal["accepted"] = "accepted"
+
+
+# --- Prédiction par lot (séance 5) ---
+class BatchPredictionRequest(BaseModel):
+    orders: list[OrderFeatures] = Field(min_length=1, max_length=1000)
+
+
+class BatchPredictionResponse(BaseModel):
+    predictions: list[Prediction]
+    count: int
+
+
+# --- Métadonnées du modèle en service (séance 3) ---
+class ModelCard(BaseModel):
+    project: str
+    model_version: str
+    model_type: str
+    task: str
+    target: str
+    threshold: float
+    trained_at: datetime | None = None
+    features: list[str]
+    metrics: dict[str, float]
+    limitations: list[str] | None = None
+
+
+# --- Événement du flux temps réel (séance 6) ---
+class OrderEvent(BaseModel):
+    event_id: str
+    event_type: Literal["order.created"] = "order.created"
+    occurred_at: datetime
+    order: OrderFeatures
+    schema_version: int = 1
+

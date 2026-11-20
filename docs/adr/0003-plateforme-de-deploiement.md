@@ -41,5 +41,5 @@ Kubernetes (option C) sera envisagé si l'application doit tourner sur plusieurs
 - Le reverse proxy **Traefik** de Coolify reçoit tout le trafic HTTPS et le redirige vers le conteneur de l'API. Le port 8000 du conteneur n'est **jamais publié** sur le serveur.
 - Les variables d'environnement (`DATABASE_URL`, `API_KEYS`, `RATE_LIMIT_PER_MINUTE`) sont saisies dans Coolify, jamais dans git (ADR-0007).
 - Le healthcheck de l'image (`/health/ready`) sert à Coolify pour savoir si une nouvelle version est prête (ADR-0005).
-- Coolify doit être tenu à jour et son interface protégée (ADR-0006).
+- Coolify doit être tenu à jour et son interface protégée (ADR-0007).
 - Le choix du VPS et de son hébergeur est décrit dans l'ADR-0004.

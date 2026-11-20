@@ -42,12 +42,12 @@ jobs:
         run: python -m training.train
 
       - name: Pylint
-        run: pylint app training scripts
+        run: pylint app training scripts orchestration streaming
 
       - name: Pytest (couverture minimale 80 %)
         env:
           TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test
-        run: python -m pytest --cov=app --cov=training --cov-report=term-missing --cov-fail-under=80
+        run: python -m pytest --cov=app --cov=training --cov=orchestration --cov=streaming --cov-report=term-missing --cov-fail-under=80
 
   docker:
     name: Construction de l'image Docker

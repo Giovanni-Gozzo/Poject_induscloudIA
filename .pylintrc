@@ -5,8 +5,12 @@ fail-under=9.0
 [MESSAGES CONTROL]
 # invalid-name : X_train, X_test, y... sont la convention du Machine Learning (scikit-learn)
 # missing-function-docstring : les routes sont documentées par summary= dans le contrat OpenAPI
+# missing-class-docstring : les schémas Pydantic et les enums sont documentés par openapi.yml
+# too-few-public-methods : abstractions (Repository, Publisher) et schémas à une seule méthode, voulus
 disable=invalid-name,
-        missing-function-docstring
+        missing-function-docstring,
+        missing-class-docstring,
+        too-few-public-methods
 
 [VARIABLES]
 # Arguments imposés par la signature FastAPI des gestionnaires (request, exc, app)

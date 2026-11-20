@@ -193,8 +193,36 @@ def test_documentation_desactivee_par_defaut(anonymous_client):
     assert anonymous_client.get("/openapi.json").status_code == 404
 
 
+def test_prediction_batch_et_relecture(client):
+    payload = {"orders": [
+        {**COMMANDE, "order_id": "CMD-BATCH-1"},
+        {**COMMANDE, "order_id": "CMD-BATCH-2", "distance_km": 40.0, "stock_available": 0},
+    ]}
+    r = client.post("/v1/predictions/batch", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["count"] == 2
+    assert [p["order_id"] for p in body["predictions"]] == ["CMD-BATCH-1", "CMD-BATCH-2"]
+
+    relecture = client.get("/v1/predictions/CMD-BATCH-1")
+    assert relecture.status_code == 200
+    assert relecture.json()["order_id"] == "CMD-BATCH-1"
+
+    inconnue = client.get("/v1/predictions/CMD-INCONNU")
+    assert inconnue.status_code == 404
+    assert inconnue.json()["error"] == "prediction_not_found"
+
+
+def test_model_card_endpoint(client):
+    r = client.get("/v1/model")
+    assert r.status_code == 200
+    card = r.json()
+    assert card["project"] == "eligibilite-livraison-express"
+    assert "roc_auc" in card["metrics"]
+
+
 # ============================ contrat OpenAPI ============================
-SEANCE_COURANTE = 2
+SEANCE_COURANTE = 6
 
 
 def test_conformite_au_contrat():

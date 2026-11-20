@@ -66,3 +66,30 @@ class ModelService:
             predicted_at=datetime.now(timezone.utc),
             latency_ms=round((time.perf_counter() - start) * 1000, 3),
         )
+
+    def predict_batch(self, orders: list[OrderFeatures]) -> list[Prediction]:
+        """Prédit un lot de commandes en une seule passe vectorisée."""
+        start = time.perf_counter()
+        features = self.card["features"]
+        rows = [order.model_dump(mode="json", include=set(features)) for order in orders]
+        X = pd.DataFrame(rows)[features]
+
+        probabilities = self.model.predict_proba(X)[:, 1]
+        now = datetime.now(timezone.utc)
+        total_ms = round((time.perf_counter() - start) * 1000, 3)
+
+        predictions = []
+        for order, prob in zip(orders, probabilities):
+            probability = float(prob)
+            eligible = probability >= self.card["threshold"]
+            predictions.append(Prediction(
+                order_id=order.order_id,
+                express_eligible=eligible,
+                decision="oui" if eligible else "non",
+                probability=round(probability, 4),
+                model_version=self.card["model_version"],
+                predicted_at=now,
+                latency_ms=total_ms,
+            ))
+        return predictions
+

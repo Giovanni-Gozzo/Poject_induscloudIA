@@ -4,6 +4,7 @@ Lancement, depuis la racine du projet :
     python -m training.train
 """
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from training.data import clean_orders_data, generate_orders_dataset, validate_dataset
+from training.repository import OrderRepository, build_order_repository
 
 # ------------------------------------------------------------------
 # Paramètres : regroupés en haut du fichier, pour les trouver et les changer facilement
@@ -72,12 +74,30 @@ def build_pipeline() -> Pipeline:
     return Pipeline([("preprocessor", preprocessor), ("classifier", classifier)])
 
 
-def load_training_data(n_rows: int = 6000):
-    """Données propres et validées, découpées en entraînement / test (cellules 8 à 22)."""
-    orders = clean_orders_data(generate_orders_dataset(n_rows=n_rows, random_state=RANDOM_STATE))
+def split_orders(raw_orders: pd.DataFrame):
+    """Nettoie, valide puis découpe des commandes brutes en entraînement / test.
+
+    Les données venant d'une base (ADR-0006) ne sont jamais considérées comme fiables :
+    le nettoyage et la validation sont systématiques.
+    """
+    orders = clean_orders_data(raw_orders)
     validate_dataset(orders)
     X, y = orders[FEATURE_COLUMNS], orders[TARGET]
     return train_test_split(X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y)
+
+
+def load_training_data(n_rows: int = 6000, repository: OrderRepository | None = None):
+    """Données propres et validées, découpées en entraînement / test.
+
+    Si `repository` est fourni, lit les commandes depuis OrderRepository (ADR-0006).
+    Sinon génère un jeu synthétique reproductible (build Docker isolé / tests).
+    """
+    if repository is not None:
+        raw_orders = repository.get_all()
+        if not raw_orders:
+            raise ValueError("Aucune commande disponible dans OrderRepository pour l'entraînement.")
+        return split_orders(pd.DataFrame(raw_orders))
+    return split_orders(generate_orders_dataset(n_rows=n_rows, random_state=RANDOM_STATE))
 
 
 def evaluate(pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> dict[str, float]:
@@ -145,7 +165,21 @@ def save_artifacts(pipeline: Pipeline, model_card: dict, artifacts_dir: Path) ->
 
 
 def main() -> None:
-    X_train, X_test, y_train, y_test = load_training_data()
+    mongo_uri = os.getenv("MONGO_URI")
+    repo = (
+        build_order_repository(
+            mongo_uri=mongo_uri,
+            db_name=os.getenv("MONGO_DB", "livraison_express"),
+            collection_name=os.getenv("MONGO_COLLECTION", "orders"),
+        )
+        if mongo_uri
+        else None
+    )
+    try:
+        X_train, X_test, y_train, y_test = load_training_data(repository=repo)
+    finally:
+        if repo is not None:
+            repo.close()
     print(f"Entraînement : {len(X_train)} lignes | Test : {len(X_test)} lignes")
 
     pipeline, metrics, run_id = train_and_track(X_train, X_test, y_train, y_test)

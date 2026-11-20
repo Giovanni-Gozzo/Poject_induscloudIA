@@ -20,7 +20,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Durcissement du conteneur (ADR-0006)
+    # Durcissement du conteneur (ADR-0007)
     read_only: true             # système de fichiers en lecture seule
     tmpfs:
       - /tmp
